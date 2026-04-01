@@ -84,8 +84,6 @@ elif st.session_state.step == "CHOICE":
     
     c1, c2 = st.columns(2)
     with c1:
-        # [해결] Key를 고정하여 선택 시 메뉴가 닫히지 않게 함
-        # 대신 default값을 세션에서 실시간으로 읽어옴
         curr_choices["s1"] = st.multiselect(
             "1. 학군내 배정 (5개)", 
             DISPLAY_SCHOOLS, 
@@ -110,7 +108,7 @@ elif st.session_state.step == "CHOICE":
         else:
             st.error("지망 학교를 모두 선택해 주세요.")
 
-# STEP 3: 추첨 단계 (결과 화면 중앙 배치 및 공백 반영)
+# STEP 3: 추첨 단계
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -140,8 +138,9 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
     res = st.session_state.stage_results[res_key]
 
     if st.session_state.show_intermediate:
-        st.markdown("<br>" * 10, unsafe_allow_html=True) # 요청하신 상단 공백
-        _, center_col, _ = st.columns([1, 2, 1]) # 요청하신 중앙 배치
+        # 수정사항: 공백을 6줄로 조정
+        st.markdown("<br>" * 6, unsafe_allow_html=True) 
+        _, center_col, _ = st.columns([1, 2, 1])
         with center_col:
             if st.session_state.current_result == "PASS":
                 st.success(f"## 🎊 **{target}** 배정 성공!")
@@ -200,16 +199,8 @@ if b_cols[1].button("🏠 처음으로", use_container_width=True):
 if b_cols[2].button("💾 설정 저장", use_container_width=True):
     sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
 
-# [핵심] 초기화 버튼 로직
-if st.session_state.step == "SETTING":
-    if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
-        st.query_params.clear(); st.session_state.clear(); st.rerun()
-elif st.session_state.step == "CHOICE":
-    if b_cols[3].button("🧹 지망 순위 비우기", use_container_width=True):
-        # [해결] 세션 값을 명시적으로 비우고 st.rerun() 하면 고정 Key라도 default=[] 가 적용됨
-        st.session_state.c_m = {"s1": [], "s2": []}
-        st.session_state.c_f = {"s1": [], "s2": []}
-        sync_to_url(); st.rerun()
-else:
-    if b_cols[3].button("🔄 시뮬레이션 종료", use_container_width=True):
-        st.session_state.step = "CHOICE"; sync_to_url(); st.rerun()
+# 수정사항: 지망 순위 비우기 제거 및 초기화 버튼 통합
+if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
+    st.query_params.clear()
+    st.session_state.clear()
+    st.rerun()
