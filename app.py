@@ -169,17 +169,35 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
         with m2:
             st.subheader(target)
             if res['rem'] == 0:
-                st.error("마감"); if st.button("탈락 확인", use_container_width=True): st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
+with m2:
+            st.subheader(target)
+            if res['rem'] == 0:
+                st.error("마감")
+                if st.button("탈락 확인", use_container_width=True): 
+                    st.session_state.current_result="FAIL"
+                    st.session_state.show_intermediate=True
+                    st.rerun()
             elif res['comp'] > res['rem']:
-                st.warning("경합"); 
-                if st.button("🎯 합격", use_container_width=True, type="primary"): st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
-                if st.button("❌ 탈락", use_container_width=True): st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
+                st.warning("경합")
+                if st.button("🎯 합격", use_container_width=True, type="primary"): 
+                    st.session_state.current_result="PASS"
+                    st.session_state.show_intermediate=True
+                    st.rerun()
+                if st.button("❌ 탈락", use_container_width=True): 
+                    st.session_state.current_result="FAIL"
+                    st.session_state.show_intermediate=True
+                    st.rerun()
             else:
-                st.success("안정"); if st.button("결과 확인 👉", use_container_width=True, type="primary"): st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
+                st.success("안정")
+                if st.button("결과 확인 👉", use_container_width=True, type="primary"): 
+                    st.session_state.current_result="PASS"
+                    st.session_state.show_intermediate=True
+                    st.rerun()
 
 # --- STEP 5: 최종 리포트 ---
 elif st.session_state.step == "RESULT":
-    st.balloons(); st.title(f"🎊 {st.session_state.gender} 최종 결과")
+    st.balloons()
+    st.title(f"🎊 {st.session_state.gender} 최종 결과")
     st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.table(pd.DataFrame(st.session_state.history_data))
 
@@ -187,8 +205,20 @@ elif st.session_state.step == "RESULT":
 st.divider()
 f_cols = st.columns([1, 1, 1.2, 1, 2])
 if st.session_state.step != "SETTING":
-    if f_cols[1].button("🏠 처음으로"): st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; st.session_state.stage_results = {}; st.rerun()
-    if f_cols[2].button("🧹 지망 초기화"): current_choices["s1"] = []; current_choices["s2"] = []; st.session_state.step = "CHOICE"; st.rerun()
+    if f_cols[1].button("🏠 처음으로"): 
+        st.session_state.step = "SETTING"
+        st.session_state.sub_step = 1
+        st.session_state.history_data = []
+        st.session_state.stage_results = []
+        st.rerun()
+    if f_cols[2].button("🧹 지망 초기화"): 
+        current_choices["s1"] = []
+        current_choices["s2"] = []
+        st.session_state.step = "CHOICE"
+        st.rerun()
     if f_cols[3].button("🚨 전체 초기화"): 
-        cookie_manager.delete(f"limits_{gender_key}"); cookie_manager.delete(f"choices_{gender_key}")
-        [st.session_state.pop(k) for k in list(st.session_state.keys())]; st.rerun()
+        cookie_manager.delete(f"limits_{gender_key}")
+        cookie_manager.delete(f"choices_{gender_key}")
+        for k in list(st.session_state.keys()):
+            st.session_state.pop(k)
+        st.rerun()
