@@ -22,7 +22,6 @@ if 'step' not in st.session_state:
     st.session_state.remaining_quota = 40
     st.session_state.show_intermediate = False
     
-    # 전체 학교 리스트
     all_schools = [
         "낙생고", "돌마고", "보평고", "분당고", "분당대진고", 
         "분당중앙고", "불곡고", "서현고", "송림고", "수내고", 
@@ -30,7 +29,7 @@ if 'step' not in st.session_state:
         "태원고", "판교고", "한솔고"
     ]
     
-    # 쿠키 로드
+    # 쿠키에서 성별별 데이터 로드
     m_limits = cookie_manager.get(cookie="limits_male")
     f_limits = cookie_manager.get(cookie="limits_female")
     m_choices = cookie_manager.get(cookie="choices_male")
@@ -41,7 +40,7 @@ if 'step' not in st.session_state:
     st.session_state.choices_male = m_choices if m_choices else {"s1": [], "s2": []}
     st.session_state.choices_female = f_choices if f_choices else {"s1": [], "s2": []}
 
-# 현재 성별 데이터 매핑
+# 현재 성별 데이터 바인딩
 gender_key = "male" if st.session_state.gender == "남학생" else "female"
 current_limits = st.session_state.limits_male if gender_key == "male" else st.session_state.limits_female
 current_choices = st.session_state.choices_male if gender_key == "male" else st.session_state.choices_female
@@ -64,46 +63,55 @@ def reset_simulation_only():
 
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
 
-# --- STEP 1: 설정 ---
+# --- STEP 1: 설정 (저장 버튼 추가됨) ---
 if st.session_state.step == "SETTING":
-    st.title("⚙️ 1단계: 성별 및 학교 마감 설정")
+    st.title("⚙️ 1단계: 성별 및 학교별 마감 지망 설정")
     st.session_state.gender = st.radio("성별 선택", ["남학생", "여학생"], horizontal=True)
-    st.info(f"💡 {st.session_state.gender} 기준 (남학생 선택 시 영덕여고 제외)")
+    st.info(f"💡 현재 **{st.session_state.gender}** 설정 모드입니다. (남학생은 영덕여고 자동 제외)")
     
     st.divider()
+    
+    # 학교별 마감 지망 입력 칸 (6열 배치)
     cols = st.columns(6) 
     for i, school in enumerate(DISPLAY_SCHOOLS):
         with cols[i % 6]:
             current_limits[school] = st.number_input(
                 f"{school}", min_value=1, max_value=18, 
-                value=current_limits[school], key=f"lim_in_{gender_key}_{school}"
+                value=current_limits[school], key=f"lim_input_{gender_key}_{school}"
             )
     
-    if st.button("💾 설정 저장 및 지망 작성", use_container_width=True, type="primary"):
-        save_all_to_cookie()
-        st.session_state.step = "CHOICE"
-        st.rerun()
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # [수정] 버튼 레이아웃: 저장 버튼과 다음 단계 이동 버튼 분리
+    set_col1, set_col2 = st.columns(2)
+    with set_col1:
+        if st.button("💾 현재 마감 설정값 저장", use_container_width=True):
+            save_all_to_cookie()
+            st.success(f"✅ {st.session_state.gender} 마감 설정이 브라우저에 저장되었습니다.")
+    
+    with set_col2:
+        if st.button("➡️ 지망 순위 작성하러 가기", use_container_width=True, type="primary"):
+            save_all_to_cookie() # 이동 시에도 자동 저장
+            st.session_state.step = "CHOICE"
+            st.rerun()
 
 # --- STEP 2: 지망 작성 ---
 elif st.session_state.step == "CHOICE":
-    st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
+    st.title(f"📋 2단계: {st.session_state.gender} 나의 지망 순위 작성")
     col1, col2 = st.columns(2)
     with col1:
-        current_choices["s1"] = st.multiselect("학군내 (5개)", DISPLAY_SCHOOLS, default=current_choices["s1"], max_selections=5, key=f"sel1_{gender_key}")
+        current_choices["s1"] = st.multiselect("학군내 배정 (5개교)", DISPLAY_SCHOOLS, default=current_choices["s1"], max_selections=5, key=f"sel1_{gender_key}")
     with col2:
         max_num = 17 if gender_key == "male" else 18
-        current_choices["s2"] = st.multiselect(f"구역내 ({max_num}개)", DISPLAY_SCHOOLS, default=current_choices["s2"], max_selections=max_num, key=f"sel2_{gender_key}")
+        current_choices["s2"] = st.multiselect(f"구역내 배정 ({max_num}개교)", DISPLAY_SCHOOLS, default=current_choices["s2"], max_selections=max_num, key=f"sel2_{gender_key}")
     
-    c_btn1, c_btn2 = st.columns(2)
-    with c_btn1:
-        if st.button("💾 현재 지망 순위 저장", use_container_width=True):
-            save_all_to_cookie()
-            st.success("저장 완료!")
-    with c_btn2:
-        if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
-            if len(current_choices["s1"]) == 5 and len(current_choices["s2"]) == max_num:
-                reset_simulation_only(); st.rerun()
-            else: st.error("모든 지망을 선택해주세요.")
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
+        if len(current_choices["s1"]) == 5 and len(current_choices["s2"]) == max_num:
+            reset_simulation_only()
+            st.rerun()
+        else:
+            st.error(f"모든 지망을 선택해주세요 (학군내 5개, 구역내 {max_num}개).")
 
 # --- STEP 3 & 4: 추첨 단계 ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
@@ -114,7 +122,7 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
     res_key = f"{st.session_state.step}_{st.session_state.sub_step}"
     
     if res_key not in st.session_state.stage_results:
-        # 시뮬레이션 연산
+        # 시뮬레이션 로직 (생략/기존 동일)
         prob = np.random.random()
         actual_limit = base_limit
         if base_limit > 1:
