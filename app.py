@@ -5,6 +5,7 @@ import plotly.express as px
 import extra_streamlit_components as stx
 
 # --- 쿠키 매니저 초기화 ---
+@st.cache_resource
 def get_manager():
     return stx.CookieManager()
 
@@ -17,10 +18,10 @@ if 'step' not in st.session_state:
     st.session_state.sub_step = 1
     st.session_state.my_assigned = None
     st.session_state.history_data = []
-    st.session_state.state_stack = []
     st.session_state.stage_results = {}
     st.session_state.remaining_quota = 40
     st.session_state.show_intermediate = False
+    st.session_state.save_success = False  # 저장 알림용 플래그
     
     all_schools = [
         "낙생고", "돌마고", "보평고", "분당고", "분당대진고", 
@@ -56,7 +57,6 @@ def reset_simulation_only():
     st.session_state.sub_step = 1
     st.session_state.my_assigned = None
     st.session_state.history_data = []
-    st.session_state.state_stack = []
     st.session_state.stage_results = {}
     st.session_state.remaining_quota = 40
     st.session_state.show_intermediate = False
@@ -66,6 +66,12 @@ st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", la
 # --- STEP 1: 설정 ---
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 성별 및 학교별 마감 지망 설정")
+    
+    # 저장 알림 표시 (성공 시에만 상단에 나타남)
+    if st.session_state.save_success:
+        st.success(f"✅ {st.session_state.gender} 마감 설정값이 브라우저에 저장되었습니다!")
+        st.session_state.save_success = False # 다음 실행 시 사라지도록 리셋
+    
     st.session_state.gender = st.radio("성별 선택", ["남학생", "여학생"], horizontal=True)
     st.info(f"💡 현재 **{st.session_state.gender}** 설정 모드입니다. (남학생은 영덕여고 자동 제외)")
     
@@ -79,19 +85,12 @@ if st.session_state.step == "SETTING":
             )
     
     st.markdown("<br>", unsafe_allow_html=True)
-# --- STEP 1: 설정 부분의 버튼 로직 수정 ---
     set_col1, set_col2 = st.columns(2)
     with set_col1:
         if st.button("💾 현재 마감 설정값 저장", use_container_width=True):
-            # 1. 쿠키에 저장
             save_all_to_cookie()
-            # 2. 현재 세션 상태에 즉시 반영 (강제 동기화)
-            if gender_key == "male":
-                st.session_state.limits_male = current_limits
-            else:
-                st.session_state.limits_female = current_limits
-            st.success(f"✅ {st.session_state.gender} 마감 설정 저장 완료!")
-            st.rerun() # 화면을 다시 그려서 저장된 값을 확인
+            st.session_state.save_success = True # 알림 표시용 플래그 ON
+            st.rerun() # 강제 화면 갱신으로 알림 띄우기
     with set_col2:
         if st.button("➡️ 지망 순위 작성하러 가기", use_container_width=True, type="primary"):
             save_all_to_cookie()
@@ -122,7 +121,7 @@ elif st.session_state.step == "CHOICE":
             else:
                 st.error("모든 지망을 선택해주세요.")
 
-# --- STEP 3 & 4: 추첨 단계 ---
+# --- STEP 3 & 4: 추첨 단계 (결과 중앙 배치 + 재추첨) ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -206,7 +205,7 @@ elif st.session_state.step == "RESULT":
     st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.table(pd.DataFrame(st.session_state.history_data))
 
-# --- 하단 컨트롤 바 ---
+# --- 하단 컨트롤 바 (뒤로가기 포함) ---
 st.divider()
 f_cols = st.columns([1, 1, 1, 1, 2])
 if st.session_state.step != "SETTING":
@@ -215,9 +214,19 @@ if st.session_state.step != "SETTING":
         elif st.session_state.step in ["STAGE1", "STAGE2"]: st.session_state.step = "CHOICE"
         elif st.session_state.step == "RESULT": st.session_state.step = "STAGE1"; st.session_state.sub_step = 1
         st.rerun()
-    if f_cols[1].button("🏠 처음 화면으로"): st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; st.session_state.stage_results = {}; st.rerun()
-    if f_cols[2].button("🧹 지망 비우기"): current_choices["s1"] = []; current_choices["s2"] = []; st.session_state.step = "CHOICE"; st.rerun()
+    if f_cols[1].button("🏠 처음 화면으로"): 
+        st.session_state.step = "SETTING"
+        st.session_state.sub_step = 1
+        st.session_state.history_data = []
+        st.session_state.stage_results = {}
+        st.rerun()
+    if f_cols[2].button("🧹 지망 비우기"): 
+        current_choices["s1"] = []
+        current_choices["s2"] = []
+        st.session_state.step = "CHOICE"
+        st.rerun()
     if f_cols[3].button("🚨 전체 초기화"): 
-        cookie_manager.delete(f"limits_{gender_key}"); cookie_manager.delete(f"choices_{gender_key}")
+        cookie_manager.delete(f"limits_{gender_key}")
+        cookie_manager.delete(f"choices_{gender_key}")
         for k in list(st.session_state.keys()): st.session_state.pop(k)
         st.rerun()
