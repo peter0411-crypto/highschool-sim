@@ -8,7 +8,7 @@ if 'step' not in st.session_state:
     st.session_state.step = "SETTING"
     st.session_state.sub_step = 1
     st.session_state.my_assigned = None
-    st.session_state.history_data = [] # 상세 데이터 저장을 위해 리스트로 변경
+    st.session_state.history_data = []
     st.session_state.state_stack = []
     st.session_state.stage_results = {}
     st.session_state.remaining_quota = 40
@@ -23,6 +23,7 @@ if 'step' not in st.session_state:
 
 DISTRICT_2_SCHOOLS = list(st.session_state.school_limits.keys())
 
+# --- 유틸리티 함수 ---
 def reset_simulation_only():
     st.session_state.step = "STAGE1"
     st.session_state.sub_step = 1
@@ -53,18 +54,26 @@ def save_state():
 
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
 
-# --- STEP 1: 설정 ---
+# --- STEP 1: 설정 (입력 칸 길이 최적화 버전) ---
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 학교별 마감 지망 설정")
-    st.info("💡 1지망 마감 설정교는 예외 없이 1지망에서 끝납니다. 그 외는 변동성이 발생할 수 있습니다.")
-    cols = st.columns(4)
+    st.info("💡 1지망 마감 설정교는 무조건 1지망 고정! 그 외는 ±1지망 변동성이 있습니다.")
+    
+    # 6개 컬럼으로 나누어 입력 칸 길이를 콤팩트하게 조정
+    cols = st.columns(6) 
     for i, school in enumerate(DISTRICT_2_SCHOOLS):
-        with cols[i % 4]:
+        with cols[i % 6]:
             st.session_state.school_limits[school] = st.number_input(
-                f"{school}", min_value=1, max_value=17, 
-                value=st.session_state.school_limits[school], key=f"lim_{school}"
+                f"{school}", 
+                min_value=1, 
+                max_value=17, 
+                value=st.session_state.school_limits[school], 
+                key=f"lim_{school}",
+                help=f"{school}의 예상 마감 지망"
             )
-    if st.button("설정 완료 👉 지망 작성", use_container_width=True, type="primary"):
+    
+    st.markdown("<br>", unsafe_allow_html=True) # 여백 추가
+    if st.button("설정 완료 👉 지망 작성하러 가기", use_container_width=True, type="primary"):
         st.session_state.step = "CHOICE"; st.rerun()
 
 # --- STEP 2: 지망 작성 ---
@@ -82,7 +91,7 @@ elif st.session_state.step == "CHOICE":
             reset_simulation_only(); st.rerun()
         else: st.error("모든 지망을 채워주세요.")
 
-# --- STEP 3 & 4: 추첨 ---
+# --- STEP 3 & 4: 추첨 단계 ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -91,7 +100,6 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
     res_key = f"{st.session_state.step}_{st.session_state.sub_step}"
     
     if res_key not in st.session_state.stage_results:
-        # 로직: 1지망은 고정, 나머지는 유동적
         prob = np.random.random()
         actual_limit = base_limit
         note = "설정값 유지"
@@ -133,34 +141,40 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
                 else: st.session_state.sub_step += 1
                 st.session_state.show_intermediate = False; st.rerun()
     else:
-        st.title(f"📍 {st.session_state.sub_step}지망 추첨 중")
+        st.title(f"📍 {st.session_state.sub_step}지망 추첨 현황")
         m1, m2 = st.columns([2, 1])
         with m1:
             fig = px.bar(x=["남은 정원", "지원자 수"], y=[res['rem'], res['comp']], color=["남은 정원", "지원자 수"], text=[res['rem'], res['comp']], color_discrete_map={"남은 정원":"#2ecc71", "지원자 수":"#e74c3c"})
-            fig.update_traces(textposition='inside', textfont_size=24); fig.update_layout(showlegend=False, height=400)
+            fig.update_traces(textposition='inside', textfont_size=24, insidetextanchor='middle'); fig.update_layout(showlegend=False, height=400)
             st.plotly_chart(fig, use_container_width=True)
         with m2:
             st.subheader(target); st.caption(res['note'])
             if res['rem'] == 0:
-                st.error("마감됨"); 
+                st.error("이미 정원이 마감되었습니다."); 
                 if st.button("탈락 확인", use_container_width=True): save_state(); st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
             elif res['comp'] > res['rem']:
-                st.warning("경합 발생"); 
-                if st.button("🎯 합격", use_container_width=True, type="primary"): save_state(); res['rank']=1; st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
-                if st.button("❌ 탈락", use_container_width=True): save_state(); res['rank']=999; st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
+                st.warning("정원을 초과하여 추첨이 필요합니다."); 
+                if st.button("🎯 합격 시나리오", use_container_width=True, type="primary"): save_state(); res['rank']=1; st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
+                st.write("")
+                if st.button("❌ 탈락 시나리오", use_container_width=True): save_state(); res['rank']=999; st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
             else:
-                st.success("안심권"); 
-                if st.button("확인", use_container_width=True, type="primary"): save_state(); st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
+                st.success("현재 정원 내 안정권입니다."); 
+                if st.button("결과 확인 👉", use_container_width=True, type="primary"): save_state(); st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
 
 # --- STEP 5: 최종 리포트 ---
 elif st.session_state.step == "RESULT":
     st.balloons(); st.title("🎊 최종 배정 결과")
-    st.info(f"### 배정 학교: {st.session_state.my_assigned}")
-    
+    st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.subheader("📋 배정 상세 히스토리")
     df_history = pd.DataFrame(st.session_state.history_data)
-    st.table(df_history) # 깔끔한 표 형태로 출력
+    st.table(df_history)
 
-    if st.button("🔄 처음부터 다시하기", use_container_width=True):
+# --- 공통 하단 컨트롤 바 ---
+st.divider()
+f_cols = st.columns([1, 1.5, 1.5, 3])
+if st.session_state.step != "SETTING":
+    if f_cols[0].button("⬅️ 뒤로가기"): go_back()
+    if f_cols[1].button("🔄 지망 유지 재시작"): reset_simulation_only(); st.rerun()
+    if f_cols[2].button("🗑️ 전체 초기화"): 
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
