@@ -82,12 +82,19 @@ elif st.session_state.step == "CHOICE":
     st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
     st.info("💡 학교를 클릭하는 순서대로 지망 순위가 결정됩니다.")
     
+    # [수정] 위젯이 초기화될 때마다 다른 key를 갖게 하여 강제 리셋 유도
+    s1_key = f"ms1_{g_code}_{len(curr_choices['s1'])}"
+    s2_key = f"ms2_{g_code}_{len(curr_choices['s2'])}"
+    
     c1, c2 = st.columns(2)
     with c1:
-        curr_choices["s1"] = st.multiselect("1. 학군내 배정 (5개)", DISPLAY_SCHOOLS, default=curr_choices["s1"], max_selections=5, key=f"ms1_{g_code}")
+        # 결과를 직접 변수에 할당한 뒤 세션에 저장
+        res_s1 = st.multiselect("1. 학군내 배정 (5개)", DISPLAY_SCHOOLS, default=curr_choices["s1"], max_selections=5, key=s1_key)
+        curr_choices["s1"] = res_s1
     with c2:
         max_n = 17 if g_code == "m" else 18
-        curr_choices["s2"] = st.multiselect(f"2. 구역내 배정 ({max_n}개)", DISPLAY_SCHOOLS, default=curr_choices["s2"], max_selections=max_n, key=f"ms2_{g_code}")
+        res_s2 = st.multiselect(f"2. 구역내 배정 ({max_n}개)", DISPLAY_SCHOOLS, default=curr_choices["s2"], max_selections=max_n, key=s2_key)
+        curr_choices["s2"] = res_s2
 
     st.divider()
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
@@ -190,16 +197,20 @@ if b_cols[1].button("🏠 처음으로", use_container_width=True):
 if b_cols[2].button("💾 현재 설정 저장", use_container_width=True):
     sync_to_url(); st.toast("✅ 주소창에 저장이 완료되었습니다!")
 
-# [초기화 버튼 분기]
+# [수정된 초기화 버튼 로직]
 if st.session_state.step == "SETTING":
     if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
-        st.query_params.clear(); st.session_state.clear(); st.rerun()
+        st.query_params.clear()
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+        
 elif st.session_state.step == "CHOICE":
     if b_cols[3].button("🧹 지망 순위 비우기", use_container_width=True):
-        st.session_state.c_m["s1"], st.session_state.c_m["s2"] = [], []
-        st.session_state.c_f["s1"], st.session_state.c_f["s2"] = [], []
-        sync_to_url(); st.rerun()
-else:
-    # 추첨 중에는 초기화 버튼 대신 '전체 리셋' 혹은 공백 유지
-    if b_cols[3].button("🔄 시뮬레이션 종료", use_container_width=True):
-        st.session_state.step = "CHOICE"; sync_to_url(); st.rerun()
+        # [핵심] 리스트를 비우고 세션 변수를 업데이트한 뒤 강제 리런
+        st.session_state.c_m["s1"] = []
+        st.session_state.c_m["s2"] = []
+        st.session_state.c_f["s1"] = []
+        st.session_state.c_f["s2"] = []
+        sync_to_url()
+        st.rerun() # 위젯이 바뀐 빈 리스트를 인지하도록 강제 재실행
