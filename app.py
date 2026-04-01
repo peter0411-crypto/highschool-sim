@@ -2,8 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import extra_streamlit_components as stx # 쿠키 관리를 위한 라이브러리
 
-# --- 1. 초기 세션 상태 설정 ---
+# --- 쿠키 매니저 초기화 ---
+def get_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_manager()
+
+# --- 1. 초기 세션 상태 및 쿠키 로드 ---
 if 'step' not in st.session_state:
     st.session_state.step = "SETTING"
     st.session_state.sub_step = 1
@@ -13,18 +20,29 @@ if 'step' not in st.session_state:
     st.session_state.stage_results = {}
     st.session_state.remaining_quota = 40
     st.session_state.show_intermediate = False
-    st.session_state.current_result = None
-    # 늘푸른고 추가 (총 18개교)
-    st.session_state.school_limits = {school: 1 for school in [
+    
+    # 기본 학교 목록
+    schools = [
         "낙생고", "돌마고", "보평고", "분당고", "분당대진고", 
         "분당중앙고", "불곡고", "서현고", "송림고", "수내고", 
         "야탑고", "영덕여고", "운중고", "이매고", "늘푸른고",
         "태원고", "판교고", "한솔고"
-    ]}
+    ]
+    
+    # 쿠키에서 기존 설정 불러오기 시도
+    saved_limits = cookie_manager.get(cookie="school_limits")
+    if saved_limits:
+        st.session_state.school_limits = saved_limits
+    else:
+        st.session_state.school_limits = {s: 1 for s in schools}
 
 DISTRICT_2_SCHOOLS = sorted(list(st.session_state.school_limits.keys()))
 
 # --- 유틸리티 함수 ---
+def save_settings_to_cookie():
+    # 현재 설정을 쿠키에 30일 동안 저장
+    cookie_manager.set("school_limits", st.session_state.school_limits, key="save_cook", expires_at=None)
+
 def reset_simulation_only():
     st.session_state.step = "STAGE1"
     st.session_state.sub_step = 1
@@ -55,10 +73,10 @@ def save_state():
 
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
 
-# --- STEP 1: 설정 (18개교 최적화) ---
+# --- STEP 1: 설정 ---
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 학교별 마감 지망 설정")
-    st.info("💡 1지망 마감 설정교는 무조건 1지망 고정! 그 외는 ±1지망 변동성이 있습니다.")
+    st.info("💡 설정한 마감 정보는 브라우저 쿠키에 저장되어 다음 접속 시에도 유지됩니다.")
     
     cols = st.columns(6) 
     for i, school in enumerate(DISTRICT_2_SCHOOLS):
@@ -72,8 +90,10 @@ if st.session_state.step == "SETTING":
             )
     
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("설정 완료 👉 지망 작성하러 가기", use_container_width=True, type="primary"):
-        st.session_state.step = "CHOICE"; st.rerun()
+    if st.button("💾 설정 저장 및 지망 작성하러 가기", use_container_width=True, type="primary"):
+        save_settings_to_cookie() # 버튼 클릭 시 쿠키 저장
+        st.session_state.step = "CHOICE"
+        st.rerun()
 
 # --- STEP 2: 지망 작성 ---
 elif st.session_state.step == "CHOICE":
@@ -82,16 +102,15 @@ elif st.session_state.step == "CHOICE":
     with col1:
         c1 = st.multiselect("학군내 배정 (5개교)", DISTRICT_2_SCHOOLS, default=st.session_state.get('my_choices_1', []), max_selections=5)
     with col2:
-        # 구역내 배정은 이제 18개교 전체 선택
         c2 = st.multiselect("구역내 배정 (18개교 전체)", DISTRICT_2_SCHOOLS, default=st.session_state.get('my_choices_2', []), max_selections=18)
     
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
         if len(c1) == 5 and len(c2) == 18:
             st.session_state.my_choices_1, st.session_state.my_choices_2 = c1, c2
             reset_simulation_only(); st.rerun()
-        else: st.error("모든 지망을 채워주세요 (학군내 5개, 구역내 18개).")
+        else: st.error("모든 지망을 채워주세요.")
 
-# --- STEP 3 & 4: 추첨 단계 ---
+# --- STEP 3 & 4: 추첨 단계 (기존 로직 동일) ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -176,5 +195,6 @@ if st.session_state.step != "SETTING":
     if f_cols[0].button("⬅️ 뒤로가기"): go_back()
     if f_cols[1].button("🔄 지망 유지 재시작"): reset_simulation_only(); st.rerun()
     if f_cols[2].button("🗑️ 전체 초기화"): 
+        cookie_manager.delete("school_limits") # 쿠키도 삭제
         for k in list(st.session_state.keys()): del st.session_state[k]
         st.rerun()
