@@ -2,26 +2,20 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import extra_streamlit_components as stx
+from streamlit.components.v1 import html
 
-# --- 1. 쿠키 매니저 (오류 방지를 위해 최상단 선언) ---
-try:
-    cookie_manager = stx.CookieManager()
-except:
-    cookie_manager = None # 쿠키 매니저 로드 실패 시 무시
+# --- 1. 초기 세션 상태 및 학교 리스트 ---
+all_schools = [
+    "낙생고", "돌마고", "보평고", "분당고", "분당대진고", 
+    "분당중앙고", "불곡고", "서현고", "송림고", "수내고", 
+    "야탑고", "영덕여고", "운중고", "이매고", "늘푸른고",
+    "태원고", "판교고", "한솔고"
+]
 
-# --- 2. 초기 세션 상태 설정 (쿠키보다 세션 데이터 우선) ---
-if 'limits_male' not in st.session_state:
-    all_schools = [
-        "낙생고", "돌마고", "보평고", "분당고", "분당대진고", 
-        "분당중앙고", "불곡고", "서현고", "송림고", "수내고", 
-        "야탑고", "영덕여고", "운중고", "이매고", "늘푸른고",
-        "태원고", "판교고", "한솔고"
-    ]
+if 'step' not in st.session_state:
     st.session_state.step = "SETTING"
     st.session_state.gender = "남학생"
     st.session_state.sub_step = 1
-    st.session_state.my_assigned = None
     st.session_state.history_data = []
     st.session_state.stage_results = {}
     st.session_state.remaining_quota = 40
@@ -33,44 +27,44 @@ if 'limits_male' not in st.session_state:
     st.session_state.choices_male = {"s1": [], "s2": []}
     st.session_state.choices_female = {"s1": [], "s2": []}
 
-# 변수 매핑 (세션 데이터 직접 참조)
+# 현재 성별 데이터 매핑
 gender_key = "male" if st.session_state.gender == "남학생" else "female"
-if gender_key == "male":
-    current_limits = st.session_state.limits_male
-    current_choices = st.session_state.choices_male
-else:
-    current_limits = st.session_state.limits_female
-    current_choices = st.session_state.choices_female
-
+current_limits = st.session_state.limits_male if gender_key == "male" else st.session_state.limits_female
+current_choices = st.session_state.choices_male if gender_key == "male" else st.session_state.choices_female
 DISPLAY_SCHOOLS = sorted([s for s in current_limits.keys() if not (gender_key == "male" and s == "영덕여고")])
 
-# --- 유틸리티 함수 ---
-def save_data():
-    """세션에 즉시 반영하고 쿠키 저장을 시도함"""
-    if cookie_manager:
-        try:
-            cookie_manager.set(f"limits_{gender_key}", current_limits, key=f"set_lim_{gender_key}")
-            cookie_manager.set(f"choices_{gender_key}", current_choices, key=f"set_cho_{gender_key}")
-        except:
-            pass # 쿠키 오류 시 세션 유지로 대체
+# --- 2. JavaScript를 이용한 로컬 저장 시스템 ---
+def save_to_browser():
+    """브라우저 localStorage에 데이터를 저장하는 JS 실행"""
+    import json
+    data = {
+        "limits_male": st.session_state.limits_male,
+        "limits_female": st.session_state.limits_female,
+        "choices_male": st.session_state.choices_male,
+        "choices_female": st.session_state.choices_female
+    }
+    js_code = f"""
+    <script>
+        localStorage.setItem('highschool_sim_data', '{json.dumps(data)}');
+        console.log('Data Saved to LocalStorage');
+    </script>
+    """
+    html(js_code, height=0)
 
+# --- 화면 구성 ---
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
 
 # --- STEP 1: 설정 ---
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 학교별 마감 지망 설정")
     
-    # 성별 선택 시 즉시 세션 반영
-    new_gender = st.radio("성별 선택", ["남학생", "여학생"], horizontal=True, index=0 if st.session_state.gender == "남학생" else 1)
-    if new_gender != st.session_state.gender:
-        st.session_state.gender = new_gender
-        st.rerun()
-
-    st.info(f"💡 현재 **{st.session_state.gender}** 설정 모드입니다.")
+    st.session_state.gender = st.radio("성별 선택", ["남학생", "여학생"], horizontal=True, 
+                                       index=0 if st.session_state.gender == "남학생" else 1)
+    
+    st.info(f"💡 현재 **{st.session_state.gender}** 설정 모드입니다. 숫자를 변경하고 아래 저장 버튼을 누르세요.")
     
     st.divider()
     cols = st.columns(6) 
-    # 중요: 세션의 값을 직접 input의 value로 사용
     for i, school in enumerate(DISPLAY_SCHOOLS):
         with cols[i % 6]:
             current_limits[school] = st.number_input(
@@ -81,12 +75,11 @@ if st.session_state.step == "SETTING":
     st.markdown("<br>", unsafe_allow_html=True)
     set_col1, set_col2 = st.columns(2)
     with set_col1:
-        if st.button("💾 현재 설정 저장 (세션 유지)", use_container_width=True):
-            save_data()
-            st.toast(f"✅ {st.session_state.gender} 설정이 임시 저장되었습니다!") # 하단 팝업 메시지
+        if st.button("💾 브라우저에 완전 저장", use_container_width=True):
+            save_to_browser() # JS 저장 실행
+            st.success("✅ 크롬 브라우저 메모리에 저장되었습니다. (새로고침해도 유지)")
     with set_col2:
         if st.button("➡️ 지망 순위 작성하러 가기", use_container_width=True, type="primary"):
-            save_data()
             st.session_state.step = "CHOICE"
             st.rerun()
 
@@ -96,33 +89,20 @@ elif st.session_state.step == "CHOICE":
     
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state[f"choices_{gender_key}"]["s1"] = st.multiselect(
-            "학군내 배정 (5개교)", DISPLAY_SCHOOLS, 
-            default=current_choices["s1"], max_selections=5
-        )
+        current_choices["s1"] = st.multiselect("학군내 (5개)", DISPLAY_SCHOOLS, default=current_choices["s1"], max_selections=5)
     with col2:
         max_num = 17 if gender_key == "male" else 18
-        st.session_state[f"choices_{gender_key}"]["s2"] = st.multiselect(
-            f"구역내 배정 ({max_num}개교)", DISPLAY_SCHOOLS, 
-            default=current_choices["s2"], max_selections=max_num
-        )
+        current_choices["s2"] = st.multiselect(f"구역내 ({max_num}개)", DISPLAY_SCHOOLS, default=current_choices["s2"], max_selections=max_num)
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    ch_col1, ch_col2 = st.columns(2)
-    with ch_col1:
-        if st.button("💾 현재 지망 저장", use_container_width=True):
-            save_data()
-            st.toast("✅ 지망 순위가 저장되었습니다!")
-    with ch_col2:
-        if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
-            if len(current_choices["s1"]) == 5 and len(current_choices["s2"]) == max_num:
-                st.session_state.step = "STAGE1"
-                st.session_state.sub_step = 1
-                st.rerun()
-            else:
-                st.error("모든 지망을 선택해야 시작할 수 있습니다.")
+    if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
+        if len(current_choices["s1"]) == 5 and len(current_choices["s2"]) == max_num:
+            st.session_state.step = "STAGE1"
+            st.session_state.sub_step = 1
+            st.rerun()
+        else:
+            st.error("모든 지망을 선택해주세요.")
 
-# --- STEP 3 & 4: 추첨 (기존 기능 유지) ---
+# --- STEP 3 & 4: 추첨 단계 (중앙 배치) ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -141,14 +121,13 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
         elif st.session_state.sub_step == actual_limit:
             rem = st.session_state.remaining_quota
             comp = np.random.randint(rem+1, rem+40)
-            reason = f"추첨 경합 (1:{comp/rem:.1f})"
+            reason = f"추첨 경합"
         else:
             rem, comp, reason = 0, np.random.randint(50, 100), "정원 마감"
         return {'comp': comp, 'rem': rem, 'reason': reason, 'others_taken': np.random.randint(5, 12)}
 
     if res_key not in st.session_state.stage_results:
         st.session_state.stage_results[res_key] = calculate_draw()
-
     res = st.session_state.stage_results[res_key]
 
     if st.session_state.show_intermediate:
@@ -158,19 +137,17 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
                 st.success(f"### 🎊 **{target}** 배정 성공!")
                 if st.button("최종 리포트 확인", use_container_width=True, type="primary"):
                     st.session_state.my_assigned = target
-                    st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "합격", "사유": res['reason']})
+                    st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "합격"})
                     st.session_state.step = "RESULT"; st.session_state.show_intermediate = False; st.rerun()
             else:
                 st.error(f"### ❌ **{target}** 탈락")
                 if st.button("다음 지망으로 이동", use_container_width=True, type="primary"):
-                    st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "탈락", "사유": res['reason']})
+                    st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "탈락"})
                     st.session_state.remaining_quota = max(0, st.session_state.remaining_quota - res['others_taken'])
                     if is_s1 and st.session_state.sub_step == 5:
                         st.session_state.step = "STAGE2"; st.session_state.sub_step = 1; st.session_state.remaining_quota = 45
                     else: st.session_state.sub_step += 1
                     st.session_state.show_intermediate = False; st.rerun()
-            if st.button("🔄 이 지망 다시 추첨", use_container_width=True):
-                st.session_state.stage_results[res_key] = calculate_draw(); st.session_state.show_intermediate = False; st.rerun()
     else:
         st.title(f"📍 {st.session_state.sub_step}지망 추첨 현황")
         m1, m2 = st.columns([2, 1])
@@ -185,9 +162,9 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
                     st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
             elif res['comp'] > res['rem']:
                 st.warning("경합 발생")
-                if st.button("🎯 합격 시나리오", use_container_width=True, type="primary"): 
+                if st.button("🎯 합격", use_container_width=True, type="primary"): 
                     st.session_state.current_result="PASS"; st.session_state.show_intermediate=True; st.rerun()
-                if st.button("❌ 탈락 시나리오", use_container_width=True): 
+                if st.button("❌ 탈락", use_container_width=True): 
                     st.session_state.current_result="FAIL"; st.session_state.show_intermediate=True; st.rerun()
             else:
                 st.success("안정권")
@@ -198,7 +175,7 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
 
 # --- STEP 5: 결과 ---
 elif st.session_state.step == "RESULT":
-    st.balloons(); st.title("🎊 최종 배정 결과")
+    st.balloons(); st.title("🎊 최종 결과")
     st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.table(pd.DataFrame(st.session_state.history_data))
 
@@ -213,6 +190,6 @@ if st.session_state.step != "SETTING":
         st.rerun()
     if f_cols[1].button("🏠 처음으로"): 
         st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; st.rerun()
-    if f_cols[3].button("🚨 전체 초기화"): 
+    if f_cols[3].button("🚨 초기화"): 
         st.session_state.clear()
         st.rerun()
