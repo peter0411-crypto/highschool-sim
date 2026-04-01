@@ -79,11 +79,19 @@ if st.session_state.step == "SETTING":
             )
     
     st.markdown("<br>", unsafe_allow_html=True)
+# --- STEP 1: 설정 부분의 버튼 로직 수정 ---
     set_col1, set_col2 = st.columns(2)
     with set_col1:
         if st.button("💾 현재 마감 설정값 저장", use_container_width=True):
+            # 1. 쿠키에 저장
             save_all_to_cookie()
+            # 2. 현재 세션 상태에 즉시 반영 (강제 동기화)
+            if gender_key == "male":
+                st.session_state.limits_male = current_limits
+            else:
+                st.session_state.limits_female = current_limits
             st.success(f"✅ {st.session_state.gender} 마감 설정 저장 완료!")
+            st.rerun() # 화면을 다시 그려서 저장된 값을 확인
     with set_col2:
         if st.button("➡️ 지망 순위 작성하러 가기", use_container_width=True, type="primary"):
             save_all_to_cookie()
