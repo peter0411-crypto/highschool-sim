@@ -188,13 +188,49 @@ elif st.session_state.step == "RESULT":
     st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.table(pd.DataFrame(st.session_state.history_data))
 
-# --- 컨트롤 바 ---
+# --- (상단 로직 생략: STAGE 1~5 동일) ---
+
+# --- 공통 하단 컨트롤 바 (뒤로가기 버튼 복구) ---
 st.divider()
+# 버튼 배치를 위해 칼럼을 나눕니다.
 f_cols = st.columns([1, 1, 1, 1, 2])
+
+# 설정 화면(SETTING)이 아닐 때만 하단 컨트롤 바를 보여줍니다.
 if st.session_state.step != "SETTING":
-    if f_cols[1].button("🏠 처음으로"): st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; st.rerun()
-    if f_cols[2].button("🧹 지망 비우기"): current_choices["s1"] = []; current_choices["s2"] = []; st.session_state.step = "CHOICE"; st.rerun()
-    if f_cols[3].button("🚨 전체 초기화"): 
-        cookie_manager.delete(f"limits_{gender_key}"); cookie_manager.delete(f"choices_{gender_key}")
-        for k in list(st.session_state.keys()): st.session_state.pop(k)
+    
+    # 1. 뒤로가기 (이전 단계로 이동)
+    if f_cols[0].button("⬅️ 뒤로가기"):
+        if st.session_state.step == "CHOICE":
+            st.session_state.step = "SETTING"
+        elif st.session_state.step in ["STAGE1", "STAGE2"]:
+            # 시뮬레이션 중 뒤로가기는 지망 선택 화면으로
+            st.session_state.step = "CHOICE"
+        elif st.session_state.step == "RESULT":
+            # 결과 화면에서 뒤로가기는 시뮬레이션 초기 상태로
+            st.session_state.step = "STAGE1"
+            st.session_state.sub_step = 1
+        st.rerun()
+
+    # 2. 처음으로 (데이터는 유지, 화면만 이동)
+    if f_cols[1].button("🏠 처음 화면으로"):
+        st.session_state.step = "SETTING"
+        st.session_state.sub_step = 1
+        st.session_state.history_data = []
+        st.session_state.stage_results = {}
+        st.session_state.show_intermediate = False
+        st.rerun()
+
+    # 3. 내 지망 순위만 초기화 (학교 마감 설정은 유지)
+    if f_cols[2].button("🧹 지망 비우기"):
+        current_choices["s1"] = []
+        current_choices["s2"] = []
+        st.session_state.step = "CHOICE"
+        st.rerun()
+
+    # 4. 전체 초기화 (쿠키까지 싹 삭제)
+    if f_cols[3].button("🚨 전체 초기화"):
+        cookie_manager.delete(f"limits_{gender_key}")
+        cookie_manager.delete(f"choices_{gender_key}")
+        for k in list(st.session_state.keys()):
+            st.session_state.pop(k)
         st.rerun()
