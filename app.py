@@ -79,62 +79,66 @@ if st.session_state.step == "SETTING":
         sync_to_url(); st.session_state.step = "CHOICE"; st.rerun()
 
 # STEP 2: 지망 선택 및 순위 조정 (여기가 'elif'입니다)
+# --- STEP 2: 지망 선택 및 순위 조정 (완전 수정 버전) ---
 elif st.session_state.step == "CHOICE":
     st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
-    st.info("💡 학교를 먼저 고르신 후, 아래 리스트에서 🔼🔽 버튼을 눌러 최종 순서를 맞추세요.")
+    st.info("💡 학교를 먼저 모두 선택한 후, 아래 리스트의 🔼🔽 버튼으로 순서를 조정하세요.")
     
     c1, c2 = st.columns(2)
+    
+    # [수정 포인트 1] 학군내 배정
     with c1:
         st.subheader("1. 학군내 배정 (5개교)")
-        # multiselect의 결과를 즉시 세션 리스트에 할당하여 유실 방지
-        st.session_state.c_m["s1" if g_code == "m" else "s1"] = st.multiselect(
-            "학교 선택 (순서 상관없이 먼저 고르세요)", 
+        # 위젯의 key를 성별과 현재 리스트 상태에 연동하여, 순서 변경 시 위젯이 강제 갱신되게 함
+        selected_s1 = st.multiselect(
+            "학교 선택", 
             DISPLAY_SCHOOLS, 
-            default=curr_choices["s1"], 
+            default=st.session_state.c_m["s1"] if g_code == "m" else st.session_state.c_f["s1"],
             max_selections=5,
-            key=f"ms1_widget_{g_code}"
+            key=f"ms1_widget_{g_code}_{len(curr_choices['s1'])}" 
         )
+        # 위젯 선택 결과를 세션에 즉시 반영
+        curr_choices["s1"] = selected_s1
         
-        # 실제 순서 조정 로직
-        s1_list = curr_choices["s1"]
-        for i, sch in enumerate(s1_list):
+        # 순서 조정 UI
+        for i, sch in enumerate(curr_choices["s1"]):
             r_cols = st.columns([3, 1, 1])
             r_cols[0].write(f"**{i+1}지망**: {sch}")
-            if r_cols[1].button("🔼", key=f"u1_{sch}") and i > 0:
-                s1_list[i], s1_list[i-1] = s1_list[i-1], s1_list[i]
-                sync_to_url(); st.rerun()
-            if r_cols[2].button("🔽", key=f"d1_{sch}") and i < len(s1_list)-1:
-                s1_list[i], s1_list[i+1] = s1_list[i+1], s1_list[i]
-                sync_to_url(); st.rerun()
+            # [수정 포인트 2] 버튼 클릭 시 세션 리스트를 직접 수정하고 즉시 sync & rerun
+            if r_cols[1].button("🔼", key=f"u1_{sch}_{i}") and i > 0:
+                curr_choices["s1"][i], curr_choices["s1"][i-1] = curr_choices["s1"][i-1], curr_choices["s1"][i]
+                sync_to_url()
+                st.rerun()
+            if r_cols[2].button("🔽", key=f"d1_{sch}_{i}") and i < len(curr_choices["s1"])-1:
+                curr_choices["s1"][i], curr_choices["s1"][i+1] = curr_choices["s1"][i+1], curr_choices["s1"][i]
+                sync_to_url()
+                st.rerun()
 
+    # [수정 포인트 3] 구역내 배정
     with c2:
         st.subheader("2. 구역내 배정 (전체)")
         max_n = 17 if g_code == "m" else 18
-        curr_choices["s2"] = st.multiselect(
+        selected_s2 = st.multiselect(
             f"학교 선택 ({max_n}개교)", 
             DISPLAY_SCHOOLS, 
-            default=curr_choices["s2"], 
+            default=curr_choices["s2"],
             max_selections=max_n,
-            key=f"ms2_widget_{g_code}"
+            key=f"ms2_widget_{g_code}_{len(curr_choices['s2'])}"
         )
+        curr_choices["s2"] = selected_s2
         
-        s2_list = curr_choices["s2"]
         with st.expander("구역내 지망 순위 상세 조정", expanded=True):
-            for i, sch in enumerate(s2_list):
+            for i, sch in enumerate(curr_choices["s2"]):
                 r_cols = st.columns([3, 1, 1])
                 r_cols[0].write(f"**{i+1}지망**: {sch}")
-                if r_cols[1].button("🔼", key=f"u2_{sch}") and i > 0:
-                    s2_list[i], s2_list[i-1] = s2_list[i-1], s2_list[i]
-                    sync_to_url(); st.rerun()
-                if r_cols[2].button("🔽", key=f"d2_{sch}") and i < len(s2_list)-1:
-                    s2_list[i], s2_list[i+1] = s2_list[i+1], s2_list[i]
-                    sync_to_url(); st.rerun()
-
-    st.divider()
-    if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
-        if len(curr_choices["s1"]) == 5 and len(curr_choices["s2"]) == max_n:
-            st.session_state.step = "STAGE1"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
-        else: st.error(f"모든 지망을 선택해주세요 (학군내 5개, 구역내 {max_n}개)")
+                if r_cols[1].button("🔼", key=f"u2_{sch}_{i}") and i > 0:
+                    curr_choices["s2"][i], curr_choices["s2"][i-1] = curr_choices["s2"][i-1], curr_choices["s2"][i]
+                    sync_to_url()
+                    st.rerun()
+                if r_cols[2].button("🔽", key=f"d2_{sch}_{i}") and i < len(curr_choices["s2"])-1:
+                    curr_choices["s2"][i], curr_choices["s2"][i+1] = curr_choices["s2"][i+1], curr_choices["s2"][i]
+                    sync_to_url()
+                    st.rerun()
 
 # STEP 3: 추첨 단계
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
