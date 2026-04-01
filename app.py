@@ -11,22 +11,20 @@ ALL_SCHOOLS = [
     "태원고", "판교고", "한솔고"
 ]
 
-# --- 2. URL 파라미터 읽기 및 세션 초기화 ---
+# --- 2. 초기 세션 상태 설정 및 URL 로드 ---
 if 'initialized' not in st.session_state:
     params = st.query_params
     st.session_state.step = params.get("step", "SETTING")
     st.session_state.gender = params.get("gender", "남학생")
     st.session_state.sub_step = int(params.get("sub_step", 1))
     
-    # 학교 설정 로드
     for s in ALL_SCHOOLS:
         st.session_state[f"lim_m_{s}"] = int(params.get(f"m_{s}", 1))
         st.session_state[f"lim_f_{s}"] = int(params.get(f"f_{s}", 1))
     
-    # 지망 리스트 로드
     def parse_list(key):
         val = params.get(key, "")
-        return val.split(",") if val else []
+        return [x for x in val.split(",") if x] if val else []
 
     st.session_state.c_m = {"s1": parse_list("cm1"), "s2": parse_list("cm2")}
     st.session_state.c_f = {"s1": parse_list("cf1"), "s2": parse_list("cf2")}
@@ -43,26 +41,24 @@ def sync_to_url():
         "step": st.session_state.step,
         "gender": st.session_state.gender,
         "sub_step": st.session_state.sub_step,
+        "cm1": ",".join(st.session_state.c_m["s1"]),
+        "cm2": ",".join(st.session_state.c_m["s2"]),
+        "cf1": ",".join(st.session_state.c_f["s1"]),
+        "cf2": ",".join(st.session_state.c_f["s2"])
     }
     for s in ALL_SCHOOLS:
         new_params[f"m_{s}"] = st.session_state[f"lim_m_{s}"]
         new_params[f"f_{s}"] = st.session_state[f"lim_f_{s}"]
-    
-    new_params["cm1"] = ",".join(st.session_state.c_m["s1"])
-    new_params["cm2"] = ",".join(st.session_state.c_m["s2"])
-    new_params["cf1"] = ",".join(st.session_state.c_f["s1"])
-    new_params["cf2"] = ",".join(st.session_state.c_f["s2"])
     st.query_params.update(new_params)
 
-# 현재 데이터 바인딩
+# 현재 데이터 매핑
 g_code = "m" if st.session_state.gender == "남학생" else "f"
-curr_limits = {s: st.session_state[f"lim_{g_code}_{s}"] for s in ALL_SCHOOLS}
 curr_choices = st.session_state.c_m if g_code == "m" else st.session_state.c_f
 DISPLAY_SCHOOLS = sorted([s for s in ALL_SCHOOLS if not (g_code == "m" and s == "영덕여고")])
 
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
 
-# --- 메인 화면 로직 ---
+# --- STEP 1: 설정 ---
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 학교별 마감 지망 설정")
     new_gender = st.radio("성별 선택", ["남학생", "여학생"], index=0 if g_code == "m" else 1, horizontal=True)
@@ -77,24 +73,70 @@ if st.session_state.step == "SETTING":
             key = f"lim_{g_code}_{school}"
             st.session_state[key] = st.number_input(f"{school}", 1, 18, value=st.session_state[key], key=f"in_{key}")
 
-    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("➡️ 지망 순위 작성하러 가기", use_container_width=True, type="primary"):
         sync_to_url(); st.session_state.step = "CHOICE"; st.rerun()
 
+# --- STEP 2: 지망 선택 및 순위 조정 ---
 elif st.session_state.step == "CHOICE":
     st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
+    st.info("💡 학교를 선택한 후, 아래 리스트에서 🔼🔽 버튼을 눌러 최종 순위를 조정하세요.")
+    
     c1, c2 = st.columns(2)
     with c1:
-        curr_choices["s1"] = st.multiselect("학군내 배정 (5개교)", DISPLAY_SCHOOLS, default=curr_choices["s1"], max_selections=5)
+        st.subheader("1. 학군내 배정 (5개교)")
+        # 드롭다운 초기화 방지: default를 세션 값으로 고정
+        st.session_state[f"c_{g_code}"]["s1"] = st.multiselect(
+            "학교 선택 (순서 상관없이 먼저 고르세요)", 
+            DISPLAY_SCHOOLS, 
+            default=curr_choices["s1"], 
+            max_selections=5,
+            key=f"ms1_{g_code}"
+        )
+        
+        # 순서 조정 UI
+        s1_list = st.session_state[f"c_{g_code}"]["s1"]
+        for i, sch in enumerate(s1_list):
+            row = st.container()
+            r_cols = row.columns([3, 1, 1])
+            r_cols[0].write(f"**{i+1}지망**: {sch}")
+            if r_cols[1].button("🔼", key=f"u1_{sch}") and i > 0:
+                s1_list[i], s1_list[i-1] = s1_list[i-1], s1_list[i]
+                sync_to_url(); st.rerun()
+            if r_cols[2].button("🔽", key=f"d1_{sch}") and i < len(s1_list)-1:
+                s1_list[i], s1_list[i+1] = s1_list[i+1], s1_list[i]
+                sync_to_url(); st.rerun()
+
     with c2:
+        st.subheader("2. 구역내 배정 (전체)")
         max_n = 17 if g_code == "m" else 18
-        curr_choices["s2"] = st.multiselect(f"구역내 배정 ({max_n}개교)", DISPLAY_SCHOOLS, default=curr_choices["s2"], max_selections=max_n)
-    
+        st.session_state[f"c_{g_code}"]["s2"] = st.multiselect(
+            f"학교 선택 ({max_n}개교)", 
+            DISPLAY_SCHOOLS, 
+            default=curr_choices["s2"], 
+            max_selections=max_n,
+            key=f"ms2_{g_code}"
+        )
+        
+        s2_list = st.session_state[f"c_{g_code}"]["s2"]
+        # 구역내는 리스트가 길어 expander로 감싸 순서 조정
+        with st.expander("구역내 지망 순위 상세 조정"):
+            for i, sch in enumerate(s2_list):
+                r_cols = st.columns([3, 1, 1])
+                r_cols[0].write(f"**{i+1}지망**: {sch}")
+                if r_cols[1].button("🔼", key=f"u2_{sch}") and i > 0:
+                    s2_list[i], s2_list[i-1] = s2_list[i-1], s2_list[i]
+                    sync_to_url(); st.rerun()
+                if r_cols[2].button("🔽", key=f"d2_{sch}") and i < len(s2_list)-1:
+                    s2_list[i], s2_list[i+1] = s2_list[i+1], s2_list[i]
+                    sync_to_url(); st.rerun()
+
+    st.divider()
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
         if len(curr_choices["s1"]) == 5 and len(curr_choices["s2"]) == max_n:
             st.session_state.step = "STAGE1"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
-        else: st.error("모든 지망을 선택해주세요.")
+        else: st.error("지망 학교를 모두 선택해야 시작할 수 있습니다.")
 
+# --- STEP 3: 추첨 단계 ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -141,7 +183,7 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
             if st.button("🔄 이 지망 다시 추첨하기", use_container_width=True):
                 st.session_state.stage_results[res_key] = calculate_draw(); st.session_state.show_intermediate = False; st.rerun()
     else:
-        st.title(f"📍 {st.session_state.sub_step}지망 추첨 현황")
+        st.title(f"📍 {st.session_state.sub_step}지망 추첨 현황 ({target})")
         m1, m2 = st.columns([2, 1])
         with m1:
             fig = px.bar(x=["남은 정원", "지원자 수"], y=[res['rem'], res['comp']], color=["남은 정원", "지원자 수"], text=[res['rem'], res['comp']], color_discrete_map={"남은 정원":"#2ecc71", "지원자 수":"#e74c3c"})
@@ -156,7 +198,6 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
                 st.button("❌ 탈락 시나리오", on_click=lambda: (st.session_state.update({"current_result":"FAIL", "show_intermediate":True})))
             else:
                 st.success("안정권"); st.button("결과 확인 👉", on_click=lambda: (st.session_state.update({"current_result":"PASS", "show_intermediate":True})))
-            st.divider()
             if st.button("🔄 다시 추첨하기", use_container_width=True):
                 st.session_state.stage_results[res_key] = calculate_draw(); st.rerun()
 
@@ -164,10 +205,9 @@ elif st.session_state.step == "RESULT":
     st.balloons(); st.title("🎊 최종 결과"); st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.table(pd.DataFrame(st.session_state.history_data))
 
-# --- 하단 컨트롤 바 (모든 화면 공통 출력) ---
+# --- 하단 컨트롤 바 (항상 고정) ---
 st.divider()
 b_cols = st.columns(4)
-# 1. 뒤로가기
 if st.session_state.step != "SETTING":
     if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
         if st.session_state.step == "CHOICE": st.session_state.step = "SETTING"
@@ -175,14 +215,11 @@ if st.session_state.step != "SETTING":
         elif st.session_state.step == "RESULT": st.session_state.step = "CHOICE"
         sync_to_url(); st.rerun()
 
-# 2. 처음으로
 if b_cols[1].button("🏠 처음으로", use_container_width=True):
     st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
 
-# 3. 데이터 저장 (URL 고정)
 if b_cols[2].button("💾 현재 설정 저장", use_container_width=True):
-    sync_to_url(); st.toast("✅ 브라우저 주소창에 저장되었습니다!")
+    sync_to_url(); st.toast("✅ 주소창에 데이터가 저장되었습니다!")
 
-# 4. 전체 초기화
 if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
     st.query_params.clear(); st.session_state.clear(); st.rerun()
