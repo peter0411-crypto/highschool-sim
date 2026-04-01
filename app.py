@@ -54,26 +54,19 @@ def save_state():
 
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
 
-# --- STEP 1: 설정 (입력 칸 길이 최적화 버전) ---
+# --- STEP 1: 설정 (콤팩트 레이아웃) ---
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 학교별 마감 지망 설정")
     st.info("💡 1지망 마감 설정교는 무조건 1지망 고정! 그 외는 ±1지망 변동성이 있습니다.")
-    
-    # 6개 컬럼으로 나누어 입력 칸 길이를 콤팩트하게 조정
     cols = st.columns(6) 
     for i, school in enumerate(DISTRICT_2_SCHOOLS):
         with cols[i % 6]:
             st.session_state.school_limits[school] = st.number_input(
-                f"{school}", 
-                min_value=1, 
-                max_value=17, 
-                value=st.session_state.school_limits[school], 
-                key=f"lim_{school}",
-                help=f"{school}의 예상 마감 지망"
+                f"{school}", min_value=1, max_value=17, 
+                value=st.session_state.school_limits[school], key=f"lim_{school}"
             )
-    
-    st.markdown("<br>", unsafe_allow_html=True) # 여백 추가
-    if st.button("설정 완료 👉 지망 작성하러 가기", use_container_width=True, type="primary"):
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("설정 완료 👉 지망 작성", use_container_width=True, type="primary"):
         st.session_state.step = "CHOICE"; st.rerun()
 
 # --- STEP 2: 지망 작성 ---
@@ -84,7 +77,6 @@ elif st.session_state.step == "CHOICE":
         c1 = st.multiselect("학군내 배정 (5개교)", DISTRICT_2_SCHOOLS, default=st.session_state.get('my_choices_1', []), max_selections=5)
     with col2:
         c2 = st.multiselect("구역내 배정 (17개교 전체)", DISTRICT_2_SCHOOLS, default=st.session_state.get('my_choices_2', []), max_selections=17)
-    
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
         if len(c1) == 5 and len(c2) == 17:
             st.session_state.my_choices_1, st.session_state.my_choices_2 = c1, c2
@@ -123,23 +115,33 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
 
     res = st.session_state.stage_results[res_key]
 
+    # [수정] 결과 확인 화면: 3칼럼 중 가운데 배치
     if st.session_state.show_intermediate:
-        st.title(f"📢 {st.session_state.sub_step}지망 결과")
-        if st.session_state.current_result == "PASS":
-            st.success(f"🎊 **{target}** 배정 성공!")
-            if st.button("최종 리포트 확인", use_container_width=True):
-                st.session_state.my_assigned = target
-                st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "합격", "사유": res['reason']})
-                st.session_state.step = "RESULT"; st.session_state.show_intermediate = False; st.rerun()
-        else:
-            st.error(f"❌ **{target}** 탈락")
-            if st.button("다음 지망으로 이동", use_container_width=True):
-                st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "탈락", "사유": res['reason']})
-                st.session_state.remaining_quota = max(0, st.session_state.remaining_quota - res['others_taken'])
-                if is_s1 and st.session_state.sub_step == 5:
-                    st.session_state.step = "STAGE2"; st.session_state.sub_step = 1; st.session_state.remaining_quota = 45
-                else: st.session_state.sub_step += 1
-                st.session_state.show_intermediate = False; st.rerun()
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        left, center, right = st.columns([1, 2, 1])
+        
+        with center:
+            st.header(f"📢 {st.session_state.sub_step}지망 결과 확인")
+            st.divider()
+            if st.session_state.current_result == "PASS":
+                st.success(f"### 🎊 **{target}** 배정 성공!")
+                st.balloons()
+                if st.button("최종 리포트 확인하기 📊", use_container_width=True, type="primary"):
+                    st.session_state.my_assigned = target
+                    st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "합격", "사유": res['reason']})
+                    st.session_state.step = "RESULT"; st.session_state.show_intermediate = False; st.rerun()
+            else:
+                st.error(f"### ❌ **{target}** 탈락")
+                st.write(f"**사유:** {res['reason']}")
+                if st.button("다음 지망으로 이동 👉", use_container_width=True, type="primary"):
+                    st.session_state.history_data.append({"지망": f"{st.session_state.sub_step}지망", "학교": target, "결과": "탈락", "사유": res['reason']})
+                    st.session_state.remaining_quota = max(0, st.session_state.remaining_quota - res['others_taken'])
+                    if is_s1 and st.session_state.sub_step == 5:
+                        st.session_state.step = "STAGE2"; st.session_state.sub_step = 1; st.session_state.remaining_quota = 45
+                    else: st.session_state.sub_step += 1
+                    st.session_state.show_intermediate = False; st.rerun()
+    
+    # 추첨 진행 화면 (기존 레이아웃 유지)
     else:
         st.title(f"📍 {st.session_state.sub_step}지망 추첨 현황")
         m1, m2 = st.columns([2, 1])
@@ -163,7 +165,7 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
 
 # --- STEP 5: 최종 리포트 ---
 elif st.session_state.step == "RESULT":
-    st.balloons(); st.title("🎊 최종 배정 결과")
+    st.title("🎊 최종 배정 결과")
     st.info(f"### 최종 배정교: {st.session_state.my_assigned}")
     st.subheader("📋 배정 상세 히스토리")
     df_history = pd.DataFrame(st.session_state.history_data)
