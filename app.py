@@ -82,19 +82,26 @@ elif st.session_state.step == "CHOICE":
     st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
     st.info("💡 학교를 클릭하는 순서대로 지망 순위가 결정됩니다.")
     
-    # [수정] 위젯이 초기화될 때마다 다른 key를 갖게 하여 강제 리셋 유도
-    s1_key = f"ms1_{g_code}_{len(curr_choices['s1'])}"
-    s2_key = f"ms2_{g_code}_{len(curr_choices['s2'])}"
-    
     c1, c2 = st.columns(2)
     with c1:
-        # 결과를 직접 변수에 할당한 뒤 세션에 저장
-        res_s1 = st.multiselect("1. 학군내 배정 (5개)", DISPLAY_SCHOOLS, default=curr_choices["s1"], max_selections=5, key=s1_key)
-        curr_choices["s1"] = res_s1
+        # [해결] Key를 고정하여 선택 시 메뉴가 닫히지 않게 함
+        # 대신 default값을 세션에서 실시간으로 읽어옴
+        curr_choices["s1"] = st.multiselect(
+            "1. 학군내 배정 (5개)", 
+            DISPLAY_SCHOOLS, 
+            default=curr_choices["s1"], 
+            max_selections=5, 
+            key=f"fixed_ms1_{g_code}"
+        )
     with c2:
         max_n = 17 if g_code == "m" else 18
-        res_s2 = st.multiselect(f"2. 구역내 배정 ({max_n}개)", DISPLAY_SCHOOLS, default=curr_choices["s2"], max_selections=max_n, key=s2_key)
-        curr_choices["s2"] = res_s2
+        curr_choices["s2"] = st.multiselect(
+            f"2. 구역내 배정 ({max_n}개)", 
+            DISPLAY_SCHOOLS, 
+            default=curr_choices["s2"], 
+            max_selections=max_n, 
+            key=f"fixed_ms2_{g_code}"
+        )
 
     st.divider()
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
@@ -103,7 +110,7 @@ elif st.session_state.step == "CHOICE":
         else:
             st.error("지망 학교를 모두 선택해 주세요.")
 
-# STEP 3: 추첨 단계
+# STEP 3: 추첨 단계 (결과 화면 중앙 배치 및 공백 반영)
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -132,10 +139,9 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
         st.session_state.stage_results[res_key] = calculate_draw()
     res = st.session_state.stage_results[res_key]
 
-    # 결과 확인 페이지 (중앙 배치 + 상단 공백)
     if st.session_state.show_intermediate:
-        st.markdown("<br>" * 8, unsafe_allow_html=True) # 상단 여백 추가
-        _, center_col, _ = st.columns([1, 2, 1]) # 3분할 중 가운데
+        st.markdown("<br>" * 10, unsafe_allow_html=True) # 요청하신 상단 공백
+        _, center_col, _ = st.columns([1, 2, 1]) # 요청하신 중앙 배치
         with center_col:
             if st.session_state.current_result == "PASS":
                 st.success(f"## 🎊 **{target}** 배정 성공!")
@@ -178,39 +184,32 @@ elif st.session_state.step == "RESULT":
     st.info(f"### 최종 배정 학교: **{st.session_state.my_assigned}**")
     st.table(pd.DataFrame(st.session_state.history_data))
 
-# --- 5. 하단 컨트롤 바 (초기화 버튼 로직 수정) ---
+# --- 5. 하단 컨트롤 바 ---
 st.divider()
 b_cols = st.columns(4)
 
-# [뒤로가기]
 if st.session_state.step != "SETTING":
     if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
         if st.session_state.step == "CHOICE": st.session_state.step = "SETTING"
         elif st.session_state.step in ["STAGE1", "STAGE2"]: st.session_state.step = "CHOICE"
         sync_to_url(); st.rerun()
 
-# [처음으로]
 if b_cols[1].button("🏠 처음으로", use_container_width=True):
     st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
 
-# [설정 저장]
-if b_cols[2].button("💾 현재 설정 저장", use_container_width=True):
-    sync_to_url(); st.toast("✅ 주소창에 저장이 완료되었습니다!")
+if b_cols[2].button("💾 설정 저장", use_container_width=True):
+    sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
 
-# [수정된 초기화 버튼 로직]
+# [핵심] 초기화 버튼 로직
 if st.session_state.step == "SETTING":
     if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
-        st.query_params.clear()
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.rerun()
-        
+        st.query_params.clear(); st.session_state.clear(); st.rerun()
 elif st.session_state.step == "CHOICE":
     if b_cols[3].button("🧹 지망 순위 비우기", use_container_width=True):
-        # [핵심] 리스트를 비우고 세션 변수를 업데이트한 뒤 강제 리런
-        st.session_state.c_m["s1"] = []
-        st.session_state.c_m["s2"] = []
-        st.session_state.c_f["s1"] = []
-        st.session_state.c_f["s2"] = []
-        sync_to_url()
-        st.rerun() # 위젯이 바뀐 빈 리스트를 인지하도록 강제 재실행
+        # [해결] 세션 값을 명시적으로 비우고 st.rerun() 하면 고정 Key라도 default=[] 가 적용됨
+        st.session_state.c_m = {"s1": [], "s2": []}
+        st.session_state.c_f = {"s1": [], "s2": []}
+        sync_to_url(); st.rerun()
+else:
+    if b_cols[3].button("🔄 시뮬레이션 종료", use_container_width=True):
+        st.session_state.step = "CHOICE"; sync_to_url(); st.rerun()
