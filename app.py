@@ -124,6 +124,39 @@ elif st.session_state.step == "CHOICE":
 # (이하 추첨 및 결과 로직은 이전과 동일하므로 생략)
 # --- 하단 컨트롤 바 부분 ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
+    # --- [신규 추가] 사이드바에 지망 순위 목록 표시 ---
+    with st.sidebar:
+        st.header("📋 내 지망 순위 요약")
+        
+        # 학군내 배정 (1단계)
+        st.subheader("1. 학군내 배정")
+        for i, school in enumerate(curr_choices["s1"]):
+            is_current = (st.session_state.step == "STAGE1" and st.session_state.sub_step == i + 1)
+            label = f"📍 {i+1}지망: {school}"
+            if is_current:
+                st.info(f"**{label} (추첨 중)**")
+            elif any(d['학교'] == school and d['결과'] == '탈락' for d in st.session_state.history_data):
+                st.text(f"❌ {i+1}지망: {school} (탈락)")
+            else:
+                st.text(label)
+        
+        st.divider()
+        
+        # 구역내 배정 (2단계)
+        st.subheader("2. 구역내 배정")
+        for i, school in enumerate(curr_choices["s2"]):
+            is_current = (st.session_state.step == "STAGE2" and st.session_state.sub_step == i + 1)
+            label = f"📍 {i+1}지망: {school}"
+            if is_current:
+                st.info(f"**{label} (추첨 중)**")
+            elif any(d['학교'] == school and d['결과'] == '탈락' for d in st.session_state.history_data):
+                st.text(f"❌ {i+1}지망: {school} (탈락)")
+            else:
+                st.text(label)
+
+    # --- 기존 추첨 로직 시작 ---
+    is_s1 = st.session_state.step == "STAGE1"
+    # ... (이후 동일)
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
     target = curr_choices["s1"][curr_idx] if is_s1 else curr_choices["s2"][curr_idx]
