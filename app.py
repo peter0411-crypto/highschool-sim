@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-# --- 1. 학교 리스트 및 상수 ---
+# --- 1. 학교 리스트 (분당중앙고 완전 제외) ---
 ALL_SCHOOLS = [
     "낙생고", "돌마고", "보평고", "분당고", "분당대진고", 
-    "분당중앙고", "불곡고", "서현고", "송림고", "수내고", 
+    "불곡고", "서현고", "송림고", "수내고", 
     "야탑고", "영덕여고", "운중고", "이매고", "늘푸른고",
     "태원고", "판교고", "한솔고"
 ]
@@ -53,6 +53,7 @@ def sync_to_url():
 
 g_code = "m" if st.session_state.gender == "남학생" else "f"
 curr_choices = st.session_state.c_m if g_code == "m" else st.session_state.c_f
+# 남학생일 경우 영덕여고 제외
 DISPLAY_SCHOOLS = sorted([s for s in ALL_SCHOOLS if not (g_code == "m" and s == "영덕여고")])
 
 st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", layout="wide")
@@ -86,7 +87,8 @@ elif st.session_state.step == "CHOICE":
     with c1:
         curr_choices["s1"] = st.multiselect("1. 학군내 배정 (5개)", DISPLAY_SCHOOLS, default=curr_choices["s1"], max_selections=5, key=f"fixed_ms1_{g_code}")
     with c2:
-        max_n = 17 if g_code == "m" else 18
+        # 중앙고 제외로 인해 전체 학교 수에서 남학생 16개, 여학생 17개로 조정됨
+        max_n = len(DISPLAY_SCHOOLS)
         curr_choices["s2"] = st.multiselect(f"2. 구역내 배정 ({max_n}개)", DISPLAY_SCHOOLS, default=curr_choices["s2"], max_selections=max_n, key=f"fixed_ms2_{g_code}")
 
     st.divider()
@@ -94,9 +96,9 @@ elif st.session_state.step == "CHOICE":
         if len(curr_choices["s1"]) == 5 and len(curr_choices["s2"]) == max_n:
             st.session_state.step = "STAGE1"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
         else:
-            st.error("지망 학교를 모두 선택해 주세요.")
+            st.error(f"지망 학교를 모두 선택해 주세요. (현재 학군내 {len(curr_choices['s1'])}/5, 구역내 {len(curr_choices['s2'])}/{max_n})")
 
-# STEP 3: 추첨 단계
+# STEP 3: 추첨 단계 (동일 유지)
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
@@ -165,7 +167,7 @@ elif st.session_state.step in ["STAGE1", "STAGE2"]:
                 st.success("안정권"); st.button("결과 확인 👉", on_click=lambda: st.session_state.update({"current_result":"PASS", "show_intermediate":True}))
             
             st.divider()
-            if st.button("🔄 다시 추첨하기 (확률 재계산)", use_container_width=True):
+            if st.button("🔄 다시 추첨하기", use_container_width=True):
                 if res_key in st.session_state.stage_results:
                     del st.session_state.stage_results[res_key]
                 st.rerun()
@@ -176,7 +178,7 @@ elif st.session_state.step == "RESULT":
     st.info(f"### 최종 배정 학교: **{st.session_state.my_assigned}**")
     st.table(pd.DataFrame(st.session_state.history_data))
 
-# --- 5. 하단 컨트롤 바 (수정된 뒤로가기 로직) ---
+# --- 5. 하단 컨트롤 바 ---
 st.divider()
 b_cols = st.columns(4)
 
@@ -186,24 +188,19 @@ if st.session_state.step != "SETTING":
             st.session_state.step = "SETTING"
         elif st.session_state.step in ["STAGE1", "STAGE2"]:
             if st.session_state.show_intermediate:
-                # 결과창(성공/탈락)에서 뒤로가면 다시 그래프 화면으로
                 st.session_state.show_intermediate = False
             elif st.session_state.sub_step > 1:
-                # 2지망 이상이면 이전 지망으로 숫자를 줄임
                 st.session_state.sub_step -= 1
                 if st.session_state.history_data: st.session_state.history_data.pop()
             else:
-                # 1지망인 경우
                 if st.session_state.step == "STAGE2":
-                    # 구역내 1지망 -> 학군내 5지망으로 이동
                     st.session_state.step = "STAGE1"
                     st.session_state.sub_step = 5
                     if st.session_state.history_data: st.session_state.history_data.pop()
                 else:
-                    # 학군내 1지망 -> 설정 화면으로 이동
                     st.session_state.step = "CHOICE"
         elif st.session_state.step == "RESULT":
-            st.session_state.step = "STAGE1" # 결과에서 뒤로가면 처음 지망으로 (필요시 조정 가능)
+            st.session_state.step = "STAGE1" 
         
         sync_to_url(); st.rerun()
 
