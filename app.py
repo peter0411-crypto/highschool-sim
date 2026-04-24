@@ -11,14 +11,14 @@ ALL_SCHOOLS = [
     "태원고", "판교고", "한솔고"
 ]
 
-# --- 2. 초기 세션 상태 설정 ---
+# --- 2. 초기 세션 상태 설정 및 URL 데이터 로드 ---
 if 'initialized' not in st.session_state:
     params = st.query_params
     st.session_state.step = params.get("step", "SETTING")
     st.session_state.gender = params.get("gender", "남학생")
     st.session_state.sub_step = int(params.get("sub_step", 1))
     
-    # 위젯 강제 초기화를 위한 버전 카운터 추가
+    # 위젯 강제 초기화를 위한 버전 카운터
     st.session_state.ms_version = 0
     
     for s in ALL_SCHOOLS:
@@ -38,6 +38,7 @@ if 'initialized' not in st.session_state:
     st.session_state.show_intermediate = False
     st.session_state.initialized = True
 
+# --- 3. 데이터 동기화 함수 ---
 def sync_to_url():
     new_params = {
         "step": st.session_state.step,
@@ -53,6 +54,7 @@ def sync_to_url():
         new_params[f"f_{s}"] = st.session_state[f"lim_f_{s}"]
     st.query_params.update(new_params)
 
+# 현재 성별에 따른 설정 및 리스트 필터링
 g_code = "m" if st.session_state.gender == "남학생" else "f"
 curr_choices = st.session_state.c_m if g_code == "m" else st.session_state.c_f
 DISPLAY_SCHOOLS = sorted([s for s in ALL_SCHOOLS if not (g_code == "m" and s == "영덕여고")])
@@ -61,12 +63,14 @@ st.set_page_config(page_title="성남 2구역 고교 배정 시뮬레이터", la
 
 # --- 4. 메인 화면 로직 ---
 
+# [1단계] 학교별 마감 지망 설정
 if st.session_state.step == "SETTING":
     st.title("⚙️ 1단계: 학교별 마감 지망 설정")
     new_gender = st.radio("성별 선택", ["남학생", "여학생"], index=0 if g_code == "m" else 1, horizontal=True)
     if new_gender != st.session_state.gender:
         st.session_state.gender = new_gender
-        sync_to_url(); st.rerun()
+        sync_to_url()
+        st.rerun()
     
     st.divider()
     cols = st.columns(6)
@@ -76,25 +80,27 @@ if st.session_state.step == "SETTING":
             st.session_state[key] = st.number_input(f"{school}", 1, 18, value=st.session_state[key], key=f"in_{key}")
 
     if st.button("➡️ 지망 순위 작성하러 가기", use_container_width=True, type="primary"):
-        sync_to_url(); st.session_state.step = "CHOICE"; st.rerun()
+        sync_to_url()
+        st.session_state.step = "CHOICE"
+        st.rerun()
 
+# [2단계] 지망 순위 선택
 elif st.session_state.step == "CHOICE":
     st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
     
     col_title, col_reset = st.columns([4, 1])
     with col_reset:
-        # 핵심 수정 사항: 버튼을 누를 때 version 번호를 올려 키를 바꿉니다.
         if st.button("🧹 지망 리스트 비우기", use_container_width=True):
             curr_choices["s1"] = []
             curr_choices["s2"] = []
-            st.session_state.ms_version += 1 # 위젯 키 변경을 위한 변수
+            st.session_state.ms_version += 1 # 위젯 강제 초기화
             st.rerun()
 
     st.info("💡 학교를 클릭하는 순서대로 지망 순위가 결정됩니다.")
     
     c1, c2 = st.columns(2)
-    # 키값에 v_{st.session_state.ms_version}를 추가하여 강제 리렌더링 유도
     with c1:
+        # ms_version을 키에 포함하여 리셋 기능 구현
         st.session_state.ms1_val = st.multiselect(
             "1. 학군내 배정 (5개)", 
             DISPLAY_SCHOOLS, 
@@ -117,58 +123,45 @@ elif st.session_state.step == "CHOICE":
     st.divider()
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
         if len(curr_choices["s1"]) == 5 and len(curr_choices["s2"]) == max_n:
-            st.session_state.step = "STAGE1"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
+            st.session_state.step = "STAGE1"
+            st.session_state.sub_step = 1
+            st.session_state.history_data = []
+            sync_to_url()
+            st.rerun()
         else:
             st.error(f"지망 학교를 모두 선택해 주세요. (현재 학군내 {len(curr_choices['s1'])}/5, 구역내 {len(curr_choices['s2'])}/{max_n})")
 
-# (이하 추첨 및 결과 로직은 이전과 동일하므로 생략)
-# --- 하단 컨트롤 바 부분 ---
-# --- [수정된 사이드바 로직] ---
+# [3단계] 추첨 시뮬레이션 (STAGE1: 학군내, STAGE2: 구역내)
+elif st.session_state.step in ["STAGE1", "STAGE2"]:
+    # 사이드바: 지망 목록 및 커트라인 정보 (중복 학교 표시 버그 수정)
     with st.sidebar:
         st.header("📋 내 지망 순위 요약")
-        st.caption("괄호 안은 1단계에서 설정한 마감 지망입니다.")
+        st.caption("괄호 안은 설정한 마감 지망입니다.")
         
-        # 1. 학군내 배정 요약
-        st.subheader("1. 학군내 배정")
-        for i, school in enumerate(curr_choices["s1"]):
-            limit_val = st.session_state.get(f"lim_{g_code}_{school}", "?")
-            is_current = (st.session_state.step == "STAGE1" and st.session_state.sub_step == i + 1)
-            label = f"{i+1}지망: {school} (마감: {limit_val})"
-            
-            if is_current:
-                st.info(f"**📍 {label} (추첨 중)**")
-            # STAGE1(학군내) 기록 중에서만 탈락 여부 확인
-            elif any(d['학교'] == school and d['결과'] == '탈락' and d['지망'].startswith("STAGE1") for d in st.session_state.history_data):
-                st.text(f"❌ {label} (탈락)")
-            else:
-                st.text(f"▫️ {label}")
-        
-        st.divider()
-        
-        # 2. 구역내 배정 요약
-        st.subheader("2. 구역내 배정")
-        for i, school in enumerate(curr_choices["s2"]):
-            limit_val = st.session_state.get(f"lim_{g_code}_{school}", "?")
-            is_current = (st.session_state.step == "STAGE2" and st.session_state.sub_step == i + 1)
-            label = f"{i+1}지망: {school} (마감: {limit_val})"
-            
-            if is_current:
-                st.info(f"**📍 {label} (추첨 중)**")
-            # STAGE2(구역내) 기록 중에서만 탈락 여부 확인
-            elif any(d['학교'] == school and d['결과'] == '탈락' and d['지망'].startswith("STAGE2") for d in st.session_state.history_data):
-                st.text(f"❌ {label} (탈락)")
-            else:
-                st.text(f"▫️ {label}")
+        for stage_name, stage_key, step_id in [("1. 학군내 배정", "s1", "STAGE1"), ("2. 구역내 배정", "s2", "STAGE2")]:
+            st.subheader(stage_name)
+            for i, school in enumerate(curr_choices[stage_key]):
+                limit_val = st.session_state.get(f"lim_{g_code}_{school}", "?")
+                is_current = (st.session_state.step == step_id and st.session_state.sub_step == i + 1)
+                label = f"{i+1}지망: {school} (마감: {limit_val})"
+                
+                if is_current:
+                    st.info(f"**📍 {label} (추첨 중)**")
+                # 현재 단계(STAGE1 or 2)에서의 탈락 기록만 체크하도록 필터링 강화
+                elif any(d['학교'] == school and d['결과'] == '탈락' and d['지망'].startswith(step_id) for d in st.session_state.history_data):
+                    st.text(f"❌ {label} (탈락)")
+                else:
+                    st.text(f"▫️ {label}")
+            if stage_key == "s1": st.divider()
 
-    # --- 기존 추첨 로직 계속 ---
-    is_s1 = st.session_state.step == "STAGE1"
-    # ... (이후 동일)
+    # 추첨 메인 화면
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
     target = curr_choices["s1"][curr_idx] if is_s1 else curr_choices["s2"][curr_idx]
     base_limit = st.session_state[f"lim_{g_code}_{target}"]
     res_key = f"{st.session_state.step}_{st.session_state.sub_step}"
     
+    # 결과 계산 로직 (캐싱)
     def calculate_draw():
         prob = np.random.random()
         actual_limit = base_limit
@@ -232,13 +225,18 @@ elif st.session_state.step == "CHOICE":
                 if res_key in st.session_state.stage_results: del st.session_state.stage_results[res_key]
                 st.rerun()
 
+# [결과 화면]
 elif st.session_state.step == "RESULT":
-    st.balloons(); st.title("🎊 최종 배정 결과")
+    st.balloons()
+    st.title("🎊 최종 배정 결과")
     st.info(f"### 최종 배정 학교: **{st.session_state.my_assigned}**")
     st.table(pd.DataFrame(st.session_state.history_data))
 
+# --- 5. 하단 컨트롤 바 (단계별 동적 구성) ---
 st.divider()
+
 if st.session_state.step == "CHOICE":
+    # 2단계에서는 '전체 초기화' 버튼 제거 (3개 컬럼)
     b_cols = st.columns(3)
     if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
         st.session_state.step = "SETTING"; sync_to_url(); st.rerun()
@@ -247,6 +245,7 @@ if st.session_state.step == "CHOICE":
     if b_cols[2].button("💾 설정 저장", use_container_width=True):
         sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
 else:
+    # 1단계 및 추첨 단계에서는 '전체 초기화' 포함 (4개 컬럼)
     b_cols = st.columns(4)
     if st.session_state.step != "SETTING":
         if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
