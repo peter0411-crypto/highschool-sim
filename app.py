@@ -79,7 +79,6 @@ if st.session_state.step == "SETTING":
 elif st.session_state.step == "CHOICE":
     st.title(f"📋 2단계: {st.session_state.gender} 지망 순위 작성")
     
-    # 지망 비우기 버튼 추가
     col_title, col_reset = st.columns([4, 1])
     with col_reset:
         if st.button("🧹 지망 리스트 비우기", use_container_width=True):
@@ -104,6 +103,7 @@ elif st.session_state.step == "CHOICE":
             st.error(f"지망 학교를 모두 선택해 주세요. (현재 학군내 {len(curr_choices['s1'])}/5, 구역내 {len(curr_choices['s2'])}/{max_n})")
 
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
+    # (추첨 로직 생략 없이 그대로 유지)
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
     target = curr_choices["s1"][curr_idx] if is_s1 else curr_choices["s2"][curr_idx]
@@ -180,30 +180,38 @@ elif st.session_state.step == "RESULT":
 
 # --- 5. 하단 컨트롤 바 ---
 st.divider()
-b_cols = st.columns(4)
 
-if st.session_state.step != "SETTING":
+# 버튼 개수를 동적으로 조절하기 위해 컬럼을 상황에 맞게 나눕니다.
+if st.session_state.step == "CHOICE":
+    # 2단계일 때는 '전체 초기화' 버튼 없이 3개의 버튼만 배치
+    b_cols = st.columns(3)
     if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
-        if st.session_state.step == "CHOICE": st.session_state.step = "SETTING"
-        elif st.session_state.step in ["STAGE1", "STAGE2"]:
-            if st.session_state.show_intermediate: st.session_state.show_intermediate = False
-            elif st.session_state.sub_step > 1:
-                st.session_state.sub_step -= 1
-                if st.session_state.history_data: st.session_state.history_data.pop()
-            else:
-                if st.session_state.step == "STAGE2":
-                    st.session_state.step = "STAGE1"; st.session_state.sub_step = 5
+        st.session_state.step = "SETTING"; sync_to_url(); st.rerun()
+    if b_cols[1].button("🏠 처음으로", use_container_width=True):
+        st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
+    if b_cols[2].button("💾 설정 저장", use_container_width=True):
+        sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
+else:
+    # 그 외 단계(1단계, 추첨단계 등)에서는 원래대로 4개 버튼 유지
+    b_cols = st.columns(4)
+    if st.session_state.step != "SETTING":
+        if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
+            if st.session_state.step in ["STAGE1", "STAGE2"]:
+                if st.session_state.show_intermediate: st.session_state.show_intermediate = False
+                elif st.session_state.sub_step > 1:
+                    st.session_state.sub_step -= 1
                     if st.session_state.history_data: st.session_state.history_data.pop()
-                else: st.session_state.step = "CHOICE"
-        elif st.session_state.step == "RESULT": st.session_state.step = "STAGE1" 
-        sync_to_url(); st.rerun()
+                else:
+                    if st.session_state.step == "STAGE2":
+                        st.session_state.step = "STAGE1"; st.session_state.sub_step = 5
+                        if st.session_state.history_data: st.session_state.history_data.pop()
+                    else: st.session_state.step = "CHOICE"
+            elif st.session_state.step == "RESULT": st.session_state.step = "STAGE1" 
+            sync_to_url(); st.rerun()
 
-if b_cols[1].button("🏠 처음으로", use_container_width=True):
-    st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
-
-if b_cols[2].button("💾 설정 저장", use_container_width=True):
-    sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
-
-# 전체 초기화 버튼은 모든 화면에서 유지하되, 1단계 설정을 포함해 전부 날립니다.
-if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
-    st.query_params.clear(); st.session_state.clear(); st.rerun()
+    if b_cols[1].button("🏠 처음으로", use_container_width=True):
+        st.session_state.step = "SETTING"; st.session_state.sub_step = 1; st.session_state.history_data = []; sync_to_url(); st.rerun()
+    if b_cols[2].button("💾 설정 저장", use_container_width=True):
+        sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
+    if b_cols[3].button("🚨 전체 초기화", use_container_width=True):
+        st.query_params.clear(); st.session_state.clear(); st.rerun()
