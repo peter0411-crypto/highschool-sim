@@ -11,12 +11,15 @@ ALL_SCHOOLS = [
     "태원고", "판교고", "한솔고"
 ]
 
-# --- 2. 초기 세션 상태 설정 및 URL 로드 ---
+# --- 2. 초기 세션 상태 설정 ---
 if 'initialized' not in st.session_state:
     params = st.query_params
     st.session_state.step = params.get("step", "SETTING")
     st.session_state.gender = params.get("gender", "남학생")
     st.session_state.sub_step = int(params.get("sub_step", 1))
+    
+    # 위젯 강제 초기화를 위한 버전 카운터 추가
+    st.session_state.ms_version = 0
     
     for s in ALL_SCHOOLS:
         st.session_state[f"lim_m_{s}"] = int(params.get(f"m_{s}", 1))
@@ -35,7 +38,6 @@ if 'initialized' not in st.session_state:
     st.session_state.show_intermediate = False
     st.session_state.initialized = True
 
-# --- 3. 데이터 동기화 함수 ---
 def sync_to_url():
     new_params = {
         "step": st.session_state.step,
@@ -81,19 +83,36 @@ elif st.session_state.step == "CHOICE":
     
     col_title, col_reset = st.columns([4, 1])
     with col_reset:
+        # 핵심 수정 사항: 버튼을 누를 때 version 번호를 올려 키를 바꿉니다.
         if st.button("🧹 지망 리스트 비우기", use_container_width=True):
             curr_choices["s1"] = []
             curr_choices["s2"] = []
+            st.session_state.ms_version += 1 # 위젯 키 변경을 위한 변수
             st.rerun()
 
     st.info("💡 학교를 클릭하는 순서대로 지망 순위가 결정됩니다.")
     
     c1, c2 = st.columns(2)
+    # 키값에 v_{st.session_state.ms_version}를 추가하여 강제 리렌더링 유도
     with c1:
-        curr_choices["s1"] = st.multiselect("1. 학군내 배정 (5개)", DISPLAY_SCHOOLS, default=curr_choices["s1"], max_selections=5, key=f"ms1_{g_code}")
+        st.session_state.ms1_val = st.multiselect(
+            "1. 학군내 배정 (5개)", 
+            DISPLAY_SCHOOLS, 
+            default=curr_choices["s1"], 
+            max_selections=5, 
+            key=f"ms1_{g_code}_v{st.session_state.ms_version}"
+        )
+        curr_choices["s1"] = st.session_state.ms1_val
     with c2:
         max_n = len(DISPLAY_SCHOOLS)
-        curr_choices["s2"] = st.multiselect(f"2. 구역내 배정 ({max_n}개)", DISPLAY_SCHOOLS, default=curr_choices["s2"], max_selections=max_n, key=f"ms2_{g_code}")
+        st.session_state.ms2_val = st.multiselect(
+            f"2. 구역내 배정 ({max_n}개)", 
+            DISPLAY_SCHOOLS, 
+            default=curr_choices["s2"], 
+            max_selections=max_n, 
+            key=f"ms2_{g_code}_v{st.session_state.ms_version}"
+        )
+        curr_choices["s2"] = st.session_state.ms2_val
 
     st.divider()
     if st.button("🚀 시뮬레이션 시작", use_container_width=True, type="primary"):
@@ -102,8 +121,9 @@ elif st.session_state.step == "CHOICE":
         else:
             st.error(f"지망 학교를 모두 선택해 주세요. (현재 학군내 {len(curr_choices['s1'])}/5, 구역내 {len(curr_choices['s2'])}/{max_n})")
 
+# (이하 추첨 및 결과 로직은 이전과 동일하므로 생략)
+# --- 하단 컨트롤 바 부분 ---
 elif st.session_state.step in ["STAGE1", "STAGE2"]:
-    # (추첨 로직 생략 없이 그대로 유지)
     is_s1 = st.session_state.step == "STAGE1"
     curr_idx = st.session_state.sub_step - 1
     target = curr_choices["s1"][curr_idx] if is_s1 else curr_choices["s2"][curr_idx]
@@ -178,12 +198,8 @@ elif st.session_state.step == "RESULT":
     st.info(f"### 최종 배정 학교: **{st.session_state.my_assigned}**")
     st.table(pd.DataFrame(st.session_state.history_data))
 
-# --- 5. 하단 컨트롤 바 ---
 st.divider()
-
-# 버튼 개수를 동적으로 조절하기 위해 컬럼을 상황에 맞게 나눕니다.
 if st.session_state.step == "CHOICE":
-    # 2단계일 때는 '전체 초기화' 버튼 없이 3개의 버튼만 배치
     b_cols = st.columns(3)
     if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
         st.session_state.step = "SETTING"; sync_to_url(); st.rerun()
@@ -192,7 +208,6 @@ if st.session_state.step == "CHOICE":
     if b_cols[2].button("💾 설정 저장", use_container_width=True):
         sync_to_url(); st.toast("✅ 주소창에 저장 완료!")
 else:
-    # 그 외 단계(1단계, 추첨단계 등)에서는 원래대로 4개 버튼 유지
     b_cols = st.columns(4)
     if st.session_state.step != "SETTING":
         if b_cols[0].button("⬅️ 뒤로가기", use_container_width=True):
